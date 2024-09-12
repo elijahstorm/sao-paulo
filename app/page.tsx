@@ -21,6 +21,14 @@ type ZoomType = {
 
 type ZoomDataCallback = ({ startIndex, endIndex }: ZoomType) => void
 
+type WheelEvent = {
+	preventDefault: () => void
+	deltaX: number
+	deltaY: number
+	clientX: number
+	target: EventTarget & { getBoundingClientRect: () => DOMRect }
+}
+
 const onZoom = (zoom: ZoomType) => {
 	// do
 }
@@ -38,68 +46,105 @@ export default function Home() {
 		endIndex: maxValue,
 	}) as { startIndex: number; endIndex: number }
 
+	const handleWheelScrolling = (event: WheelEvent) => {
+		event.preventDefault()
+
+		const zoomThreshold = Math.floor(0.15 * data.length)
+		const panThreshold = Math.floor(0.1 * data.length)
+		const gap = Math.floor(0.05 * data.length)
+
+		let accumulatedDeltaX = deltaAccumulatorX + event.deltaX
+		let accumulatedDeltaY = deltaAccumulatorY + event.deltaY
+
+		const container = event.target.getBoundingClientRect()
+		const mouseX = event.clientX - container.left
+		const containerWidth = container.width
+		let zoomFactor = mouseX / containerWidth
+		const graphGrowthRate = 1.5
+
+		const smoothZoom = (value: number): number =>
+			value < 0.5 ? Math.pow(value * 2, 2) / 2 : 1 - Math.pow((1 - value) * 2, 2) / 2
+
+		zoomFactor = smoothZoom(zoomFactor)
+
+		const processGap = (percentage: number, gap: number): number => Math.round(percentage * gap)
+
+		if (accumulatedDeltaX > panThreshold) {
+			setZoom({
+				...zoom,
+				startIndex: Math.min(maxValue, startIndex + 1),
+				endIndex: Math.min(maxValue, endIndex + 1),
+			})
+			accumulatedDeltaX = 0
+		} else if (accumulatedDeltaX < -panThreshold) {
+			setZoom({
+				...zoom,
+				startIndex: Math.max(minValue, startIndex - 1),
+				endIndex: Math.max(minValue, endIndex - 1),
+			})
+			accumulatedDeltaX = 0
+		}
+
+		if (accumulatedDeltaY > zoomThreshold) {
+			const updatedZoom = {
+				startIndex: Math.max(minValue, startIndex - processGap(zoomFactor, gap)),
+				endIndex: Math.min(maxValue, endIndex + processGap(1 - zoomFactor, gap)),
+			}
+			if (
+				data.length < 1000 &&
+				Math.abs(updatedZoom.startIndex - updatedZoom.endIndex) > data.length * 0.8
+			) {
+				setData(generateRandomData(data.length * graphGrowthRate))
+			}
+			setZoom({
+				...zoom,
+				...updatedZoom,
+			})
+			accumulatedDeltaY = 0
+		} else if (accumulatedDeltaY < -zoomThreshold) {
+			if (Math.abs(startIndex - endIndex) > gap * 1.5) {
+				const updatedZoom = {
+					startIndex: Math.min(data.length - 2, startIndex + processGap(zoomFactor, gap)),
+					endIndex: Math.max(1, endIndex - processGap(1 - zoomFactor, gap)),
+				}
+				if (
+					data.length > 100 &&
+					Math.abs(updatedZoom.startIndex - updatedZoom.endIndex) < data.length * 0.2
+				) {
+					setData(generateRandomData(Math.floor(data.length / graphGrowthRate)))
+					setZoom({
+						startIndex: 0,
+						endIndex: Math.floor(data.length / graphGrowthRate) - 1,
+					})
+				} else {
+					setZoom({
+						...zoom,
+						...updatedZoom,
+					})
+				}
+			}
+			accumulatedDeltaY = 0
+		}
+
+		setDeltaAccumulatorX(accumulatedDeltaX)
+		setDeltaAccumulatorY(accumulatedDeltaY)
+	}
+
 	const handleBrushChange = useCallback<ZoomDataCallback>(
 		(updatedZoom: ZoomType) => {
+			setZoom(updatedZoom)
 			if (onZoom) onZoom(updatedZoom)
 		},
-		[zoom, onZoom]
+		[setZoom, onZoom]
 	)
 
 	useEffect(() => {
 		const graphElement = graphRef.current
-
-		const handleWheel = (event) => {
-			event.preventDefault()
-
-			const zoomThreshold = 30
-			const panThreshold = 50
-			let accumulatedDeltaX = deltaAccumulatorX + event.deltaX
-			let accumulatedDeltaY = deltaAccumulatorY + event.deltaY
-
-			if (accumulatedDeltaX > panThreshold) {
-				setZoom({
-					...zoom,
-					startIndex: Math.min(maxValue, startIndex + 1),
-					endIndex: Math.min(maxValue, endIndex + 1),
-				})
-				accumulatedDeltaX = 0
-			} else if (accumulatedDeltaX < -panThreshold) {
-				setZoom({
-					...zoom,
-					startIndex: Math.max(minValue, startIndex - 1),
-					endIndex: Math.max(minValue, endIndex - 1),
-				})
-				accumulatedDeltaX = 0
-			}
-
-			if (accumulatedDeltaY > zoomThreshold) {
-				setZoom({
-					...zoom,
-					startIndex: Math.max(minValue, startIndex - 1),
-					endIndex: Math.min(maxValue, endIndex + 1),
-				})
-				accumulatedDeltaY = 0
-			} else if (accumulatedDeltaY < -zoomThreshold) {
-				if (Math.abs(startIndex - endIndex) > 5) {
-					setZoom({
-						...zoom,
-						startIndex: Math.min(data.length - 2, startIndex + 1),
-						endIndex: Math.max(1, endIndex - 1),
-					})
-				}
-				accumulatedDeltaY = 0
-			}
-
-			setDeltaAccumulatorX(accumulatedDeltaX)
-			setDeltaAccumulatorY(accumulatedDeltaY)
-		}
-
-		graphElement?.addEventListener("wheel", handleWheel, { passive: false })
-
+		graphElement?.addEventListener("wheel", handleWheelScrolling, { passive: false })
 		return () => {
-			graphElement?.removeEventListener("wheel", handleWheel)
+			graphElement?.removeEventListener("wheel", handleWheelScrolling)
 		}
-	}, [zoom, onZoom, deltaAccumulatorX, deltaAccumulatorY])
+	}, [zoom, setData, onZoom, deltaAccumulatorX, deltaAccumulatorY])
 
 	return (
 		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
@@ -107,6 +152,7 @@ export default function Home() {
 				className="flex flex-col gap-8 row-start-2 items-center sm:items-start touch-none"
 				ref={graphRef}
 			>
+				<p>{data.length}</p>
 				<LineChart
 					width={500}
 					height={300}
@@ -140,8 +186,8 @@ export default function Home() {
 							})
 						}
 						onChange={handleBrushChange}
-						startIndex={zoom?.startIndex}
-						endIndex={zoom?.endIndex}
+						startIndex={startIndex}
+						endIndex={endIndex}
 					/>
 				</LineChart>
 			</main>
