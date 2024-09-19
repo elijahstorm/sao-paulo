@@ -11,6 +11,8 @@ import {
 	Legend,
 	ResponsiveContainer,
 	Brush,
+	BarChart,
+	Bar,
 } from "recharts"
 import { generateRandomData } from "./helpers/faker"
 
@@ -57,7 +59,7 @@ export default function Home() {
 			event.preventDefault()
 
 			if (activeAnimations) {
-				setActiveAnimations(false)
+				// setActiveAnimations(false)
 			}
 
 			const zoomThreshold = Math.floor(0.15 * data.length)
@@ -186,7 +188,7 @@ export default function Home() {
 				ref={graphRef}
 			>
 				<p>data.length: {data.length}</p>
-				<LineChart
+				<BarChart
 					width={500}
 					height={300}
 					data={data}
@@ -202,17 +204,19 @@ export default function Home() {
 					<YAxis />
 					<Tooltip />
 					<Legend />
-					<Line
+					<Bar
 						type="monotone"
 						dataKey="pv"
 						stroke="#8884d8"
+						fill="#8884d8"
 						activeDot={{ r: 8 }}
 						isAnimationActive={activeAnimations}
 					/>
-					<Line
+					<Bar
 						type="monotone"
 						dataKey="uv"
 						stroke="#82ca9d"
+						fill="#82ca9d"
 						isAnimationActive={activeAnimations}
 					/>
 					<Brush
@@ -233,7 +237,7 @@ export default function Home() {
 						startIndex={startIndex}
 						endIndex={endIndex}
 					/>
-				</LineChart>
+				</BarChart>
 			</main>
 		</div>
 	)
